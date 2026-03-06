@@ -6,7 +6,7 @@ Internal tool for game publishing/operations teams: enter a Steam App ID, fetch 
 
 - Next.js (App Router) + TypeScript
 - Tailwind CSS
-- Server-side API route for Steam + LLM (DeepSeek-compatible, API key stays server-side)
+- Server-side API route for Steam + LLM (DeepSeek / OpenAI / OpenAI-compatible, API key stays server-side)
 - Simple local JSON cache in `.cache/`
 
 ### Folder structure
@@ -49,7 +49,10 @@ npm install
 copy .env.example .env.local
 ```
 
-Then edit `.env.local` and set `DEEPSEEK_API_KEY=...`.
+Then edit `.env.local` and set at least one provider:
+- `DEEPSEEK_API_KEY=...` (DeepSeek)
+- `OPENAI_API_KEY=...` (OpenAI / ChatGPT)
+- `OPENAI_COMPAT_API_KEY=...` + `OPENAI_COMPAT_BASE_URL=...` (OpenAI-compatible API)
 
 3) Run dev server
 
@@ -64,4 +67,3 @@ Open `http://localhost:3000`.
 - Steam reviews are fetched via the public endpoint `store.steampowered.com/appreviews/{appId}`.
 - Review fetches are cached to `.cache/` keyed by (appId, language, count) to speed up repeated demos.
 - AI output uses **JSON Schema structured output** (no fragile free-form parsing).
-

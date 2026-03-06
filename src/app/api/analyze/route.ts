@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { fetchSteamReviews } from "@/lib/steam";
 import { analyzeReviewsWithOpenAI } from "@/lib/openai";
 import type { AnalysisResponse } from "@/types/analysis";
+import type { LlmProvider } from "@/lib/openai";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,8 @@ type AnalyzeRequestBody = {
   appId: string | number;
   count?: number;
   language?: string;
+  llmProvider?: LlmProvider;
+  llmModel?: string;
 };
 
 function asInt(v: unknown) {
@@ -36,6 +39,14 @@ export async function POST(req: Request) {
     typeof body.language === "string" && body.language.trim().length
       ? body.language.trim().toLowerCase()
       : "all";
+  const llmProvider: LlmProvider =
+    body.llmProvider === "openai" || body.llmProvider === "openai_compatible"
+      ? body.llmProvider
+      : "deepseek";
+  const llmModel =
+    typeof body.llmModel === "string" && body.llmModel.trim().length
+      ? body.llmModel.trim()
+      : undefined;
 
   if (!Number.isInteger(appId) || appId <= 0) {
     return NextResponse.json(
@@ -70,6 +81,10 @@ export async function POST(req: Request) {
       language,
       stats: { total, positive, negative },
       reviews: steam.reviews,
+      llm: {
+        provider: llmProvider,
+        model: llmModel,
+      },
     });
 
     const payload: AnalysisResponse = {
@@ -93,11 +108,13 @@ export async function POST(req: Request) {
     const status =
       message.includes("Steam API") || message.includes("reviews")
         ? 502
-        : message.includes("OPENAI_API_KEY") || message.includes("OpenAI")
+        : message.includes("API_KEY") ||
+            message.includes("BASE_URL") ||
+            message.includes("OpenAI") ||
+            message.includes("provider")
           ? 502
           : 500;
 
     return NextResponse.json({ error: message }, { status });
   }
 }
-

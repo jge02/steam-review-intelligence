@@ -160,7 +160,7 @@ export function ReviewAnalyzer() {
             ) : null}
 
             <div className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-              说明：AI 分析在服务端 API 路由执行。你的 OpenAI/DeepSeek 密钥不会发送到浏览器。
+              说明：AI 分析在服务端 API 路由执行。你的 API 密钥（DeepSeek/OpenAI/兼容接口）不会发送到浏览器。
             </div>
           </div>
         </Card>
