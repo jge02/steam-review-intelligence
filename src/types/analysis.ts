@@ -27,8 +27,36 @@ export type AnalysisResult = {
   executiveSummary: string;
 };
 
-export type AnalysisResponse = {
+export type PlaytimeBucketStat = {
+  bucket: string;
+  count: number;
+};
+
+export type ReviewStats = {
+  totalReviews: number;
+  positive: number;
+  negative: number;
+  positivePct: number;
+  negativePct: number;
+  languageDistribution: Array<{ language: string; count: number }>;
+  playtimeBuckets: PlaytimeBucketStat[];
+  recentSentimentShift: {
+    recentNegativePct: number;
+    earlierNegativePct: number;
+    deltaPct: number;
+  };
+  keywordHits: Array<{ keyword: string; count: number }>;
+};
+
+export type ReviewTopic = {
+  name: string;
+  count: number;
+  examples: string[];
+};
+
+export type GameAnalysisContext = {
   appId: number;
+  name: string;
   requestedReviewCount: number;
   language: string;
   fetchedReviewCount: number;
@@ -39,6 +67,13 @@ export type AnalysisResponse = {
     positivePct: number;
     negativePct: number;
   };
-  analysis: AnalysisResult;
+  stats: ReviewStats;
+  topics: ReviewTopic[];
 };
 
+export type AnalysisResponse = {
+  query: string;
+  mode: "single_game" | "comparison";
+  games: GameAnalysisContext[];
+  analysis: AnalysisResult;
+};

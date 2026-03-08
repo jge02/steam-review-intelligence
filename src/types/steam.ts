@@ -20,6 +20,20 @@ export type SteamFetchOptions = {
   count: number;
   language: string;
   filter?: "recent" | "all";
+  dayRange?: number;
+  reviewType?: "all" | "positive" | "negative";
+};
+
+export type SteamGameSearchResult = {
+  appId: number;
+  name: string;
+  tinyImage?: string;
+  price?: string;
+  platforms?: {
+    windows?: boolean;
+    mac?: boolean;
+    linux?: boolean;
+  };
 };
 
 export type SteamQuerySummary = {

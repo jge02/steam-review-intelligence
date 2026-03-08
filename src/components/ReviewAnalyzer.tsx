@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import { Card } from "@/components/Card";
@@ -53,6 +53,7 @@ function List({ items }: { items: string[] }) {
 }
 
 export function ReviewAnalyzer() {
+  const [query, setQuery] = useState<string>("");
   const [appId, setAppId] = useState<string>("");
   const [count, setCount] = useState<number>(100);
   const [language, setLanguage] = useState<string>("all");
@@ -63,8 +64,10 @@ export function ReviewAnalyzer() {
 
   const canSubmit = useMemo(() => {
     const id = Number(appId);
-    return Number.isInteger(id) && id > 0 && count >= 1 && count <= 300;
-  }, [appId, count]);
+    const hasQuery = query.trim().length > 0;
+    const hasAppId = Number.isInteger(id) && id > 0;
+    return (hasQuery || hasAppId) && count >= 1 && count <= 300;
+  }, [appId, count, query]);
 
   async function onAnalyze() {
     setError(null);
@@ -74,7 +77,12 @@ export function ReviewAnalyzer() {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appId, count, language }),
+        body: JSON.stringify({
+          query,
+          appId: appId.trim() ? appId : undefined,
+          count,
+          language,
+        }),
       });
 
       const json = (await res.json()) as AnalysisResponse | ApiError;
@@ -94,25 +102,33 @@ export function ReviewAnalyzer() {
     <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
       <header className="mb-8">
         <div className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/70 px-3 py-1 text-xs font-semibold text-zinc-700 shadow-sm backdrop-blur dark:border-white/10 dark:bg-zinc-950/50 dark:text-zinc-200">
-          内部工具 MVP
+          Review Intelligence Agent
           <span className="h-1 w-1 rounded-full bg-zinc-400" />
-          Steam 评论到 AI 运营总结
+          自然语言问题到评论分析
         </div>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
           Steam 评论智能分析
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600 dark:text-zinc-400">
-          输入 Steam App ID，抓取近期评论，计算基础情感统计，并生成结构化发行/运营看板。
+          直接输入自然语言问题。Agent 会按需解析游戏、抓取 Steam 评论、生成统计与主题，再给出结构化发行/运营结论。
         </p>
       </header>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card title="评论分析" className="lg:col-span-1">
           <div className="space-y-4">
-            <Field label="Steam App ID" hint="必填">
+            <Field label="分析问题" hint="推荐">
+              <Input
+                placeholder="例如：比较 Monster Hunter Wilds 和 Helldivers 2 的近期差评"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </Field>
+
+            <Field label="Steam App ID" hint="可选">
               <Input
                 inputMode="numeric"
-                placeholder="例如 730"
+                placeholder="例如 730，可与自然语言配合"
                 value={appId}
                 onChange={(e) => setAppId(e.target.value)}
               />
@@ -160,7 +176,7 @@ export function ReviewAnalyzer() {
             ) : null}
 
             <div className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-              说明：AI 分析在服务端 API 路由执行。你的 API 密钥（DeepSeek/OpenAI/兼容接口）不会发送到浏览器。
+              说明：Agent 在服务端 API 路由执行。你的 API 密钥（DeepSeek/OpenAI/兼容接口）不会发送到浏览器。
             </div>
           </div>
         </Card>
@@ -169,61 +185,29 @@ export function ReviewAnalyzer() {
           {!result ? (
             <Card title="结果">
               <div className="text-sm text-zinc-600 dark:text-zinc-400">
-                执行一次分析后，这里会展示主题、主要抱怨、运营洞察和代表性评论引用。
+                执行一次分析后，这里会展示 agent 解析到的游戏、评论统计、主题，以及最终运营结论。
               </div>
             </Card>
           ) : (
             <div className="space-y-6">
+              <Card title="任务概览">
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <span className="text-zinc-500">用户问题：</span>
+                    <span className="ml-2 text-zinc-900 dark:text-zinc-100">
+                      {result.query}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500">模式：</span>
+                    <span className="ml-2 font-semibold text-zinc-900 dark:text-zinc-100">
+                      {result.mode === "comparison" ? "对比分析" : "单游戏分析"}
+                    </span>
+                  </div>
+                </div>
+              </Card>
+
               <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                <Card title="应用 / 评论">
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-500">App ID</span>
-                      <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                        {result.appId}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-500">已分析评论数</span>
-                      <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                        {result.fetchedReviewCount}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-500">语言</span>
-                      <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                        {result.language}
-                      </span>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card title="本地情感统计（Steam 标记）">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-zinc-500">好评</span>
-                      <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                        {result.steamSummary.positive} ({pct(result.steamSummary.positivePct)})
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-zinc-500">差评</span>
-                      <span className="font-semibold text-rose-700 dark:text-rose-400">
-                        {result.steamSummary.negative} ({pct(result.steamSummary.negativePct)})
-                      </span>
-                    </div>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                      <div
-                        className="h-full bg-emerald-500"
-                        style={{ width: `${result.steamSummary.positivePct}%` }}
-                      />
-                    </div>
-                    <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                      基于已抓取评论中的 `voted_up` 字段统计。
-                    </div>
-                  </div>
-                </Card>
-
                 <Card title="AI 情感分布">
                   <div className="grid grid-cols-3 gap-2">
                     {(
@@ -247,6 +231,110 @@ export function ReviewAnalyzer() {
                     ))}
                   </div>
                 </Card>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                {result.games.map((game) => (
+                  <Card
+                    key={`${game.appId}-${game.name}`}
+                    title={`${game.name} (${game.appId})`}
+                  >
+                    <div className="space-y-5">
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="rounded-xl border border-black/10 bg-white/50 p-3 dark:border-white/10 dark:bg-zinc-950/40">
+                          <div className="text-zinc-500">已抓取评论</div>
+                          <div className="mt-1 font-semibold text-zinc-900 dark:text-zinc-100">
+                            {game.fetchedReviewCount}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-black/10 bg-white/50 p-3 dark:border-white/10 dark:bg-zinc-950/40">
+                          <div className="text-zinc-500">语言</div>
+                          <div className="mt-1 font-semibold text-zinc-900 dark:text-zinc-100">
+                            {game.language}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-zinc-500">好评</span>
+                          <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                            {game.steamSummary.positive} ({pct(game.steamSummary.positivePct)})
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-zinc-500">差评</span>
+                          <span className="font-semibold text-rose-700 dark:text-rose-400">
+                            {game.steamSummary.negative} ({pct(game.steamSummary.negativePct)})
+                          </span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                          <div
+                            className="h-full bg-emerald-500"
+                            style={{ width: `${game.steamSummary.positivePct}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                            关键词命中
+                          </div>
+                          <List
+                            items={game.stats.keywordHits
+                              .slice(0, 6)
+                              .map((item) => `${item.keyword}: ${item.count}`)}
+                          />
+                        </div>
+                        <div>
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                            Playtime Bucket
+                          </div>
+                          <List
+                            items={game.stats.playtimeBuckets
+                              .slice(0, 5)
+                              .map((item) => `${item.bucket}: ${item.count}`)}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                          主题归纳
+                        </div>
+                        <div className="space-y-3">
+                          {game.topics.length ? (
+                            game.topics.slice(0, 4).map((topic) => (
+                              <div
+                                key={`${game.appId}-${topic.name}`}
+                                className="rounded-xl border border-black/10 bg-white/50 p-4 dark:border-white/10 dark:bg-zinc-950/40"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                                    {topic.name}
+                                  </div>
+                                  <div className="text-xs text-zinc-500">{topic.count}</div>
+                                </div>
+                                <div className="mt-2 text-sm leading-6 text-zinc-700 dark:text-zinc-300">
+                                  {topic.examples.join(" / ")}
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-sm text-zinc-500">未提取到明显主题。</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 bg-white/50 p-4 text-sm text-zinc-700 dark:border-white/10 dark:bg-zinc-950/40 dark:text-zinc-300">
+                        近期差评波动：{pct(game.stats.recentSentimentShift.recentNegativePct)} vs{" "}
+                        {pct(game.stats.recentSentimentShift.earlierNegativePct)}，变化{" "}
+                        {pct(game.stats.recentSentimentShift.deltaPct)}
+                      </div>
+                    </div>
+                  </Card>
+                ))}
               </div>
 
               <Card title="执行摘要">
@@ -321,7 +409,7 @@ export function ReviewAnalyzer() {
       </div>
 
       <footer className="mt-10 border-t border-black/5 pt-6 text-xs text-zinc-500 dark:border-white/10 dark:text-zinc-400">
-        缓存：Steam 评论抓取结果会缓存在本地 <code>.cache/</code>，便于重复演示时更快返回。
+        缓存：Steam 评论抓取结果和游戏名解析结果会缓存在本地 <code>.cache/</code>，便于重复演示时更快返回。
       </footer>
     </div>
   );

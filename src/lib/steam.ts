@@ -1,6 +1,7 @@
 import { readJsonCache, writeJsonCache } from "@/lib/cache";
 import type {
   SteamFetchOptions,
+  SteamGameSearchResult,
   SteamReview,
   SteamReviewsResponse,
 } from "@/types/steam";
@@ -16,7 +17,7 @@ function normalizeLanguage(language: string) {
 }
 
 function cacheKey(opts: SteamFetchOptions) {
-  return `steam-reviews_${opts.appId}_${opts.filter ?? "recent"}_${opts.language}_${opts.count}`;
+  return `steam-reviews_${opts.appId}_${opts.filter ?? "recent"}_${opts.language}_${opts.count}_${opts.dayRange ?? 365}_${opts.reviewType ?? "all"}`;
 }
 
 export type SteamReviewsFetchResult = {
@@ -29,6 +30,75 @@ export type SteamReviewsFetchResult = {
   rawQuerySummary?: SteamReviewsResponse["query_summary"];
 };
 
+export type ResolveGameResult = {
+  query: string;
+  exactMatch?: SteamGameSearchResult;
+  candidates: SteamGameSearchResult[];
+};
+
+function normalizeQuery(query: string) {
+  return query.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export async function resolveGameToAppId(query: string): Promise<ResolveGameResult> {
+  const normalized = normalizeQuery(query);
+  if (!normalized) {
+    throw new Error("Game name query is empty.");
+  }
+
+  const cacheKey = `steam-game-search_${encodeURIComponent(normalized)}`;
+  const cached = await readJsonCache<ResolveGameResult>(cacheKey);
+  if (cached) return cached;
+
+  const url = new URL("https://store.steampowered.com/api/storesearch/");
+  url.searchParams.set("term", query.trim());
+  url.searchParams.set("l", "english");
+  url.searchParams.set("cc", "US");
+
+  const res = await fetch(url.toString(), {
+    headers: { "User-Agent": "SteamReviewIntelligence/0.2 (agent demo)" },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Steam search request failed (HTTP ${res.status}).`);
+  }
+
+  const data = (await res.json()) as {
+    items?: Array<{
+      id?: number;
+      name?: string;
+      tiny_image?: string;
+      price?: { final_formatted?: string };
+      platforms?: { windows?: boolean; mac?: boolean; linux?: boolean };
+    }>;
+  };
+
+  const candidates: SteamGameSearchResult[] = (data.items ?? [])
+    .map((item): SteamGameSearchResult | null => {
+      if (!item.id || !item.name) return null;
+      return {
+        appId: item.id,
+        name: item.name,
+        tinyImage: item.tiny_image,
+        price: item.price?.final_formatted,
+        platforms: item.platforms,
+      };
+    })
+    .filter((item): item is SteamGameSearchResult => item !== null)
+    .slice(0, 6);
+
+  const exactMatch = candidates.find((item) => normalizeQuery(item.name) === normalized);
+  const result: ResolveGameResult = {
+    query: query.trim(),
+    exactMatch,
+    candidates,
+  };
+
+  await writeJsonCache(cacheKey, result);
+  return result;
+}
+
 export async function fetchSteamReviews(
   options: SteamFetchOptions,
 ): Promise<SteamReviewsFetchResult> {
@@ -40,8 +110,13 @@ export async function fetchSteamReviews(
   const count = clampCount(options.count);
   const language = normalizeLanguage(options.language);
   const filter = options.filter ?? "recent";
+  const dayRange =
+    Number.isFinite(options.dayRange) && (options.dayRange ?? 0) > 0
+      ? Math.min(3650, Math.floor(options.dayRange as number))
+      : 365;
+  const reviewType = options.reviewType ?? "all";
 
-  const key = cacheKey({ appId, count, language, filter });
+  const key = cacheKey({ appId, count, language, filter, dayRange, reviewType });
   const cached = await readJsonCache<SteamReviewsFetchResult>(key);
   if (cached) return cached;
 
@@ -87,7 +162,8 @@ export async function fetchSteamReviews(
     url.searchParams.set("filter", filter); // "recent" keeps MVP snappy
     url.searchParams.set("language", language);
     url.searchParams.set("purchase_type", "all");
-    url.searchParams.set("day_range", "365"); // still "recent" but bounded
+    url.searchParams.set("review_type", reviewType);
+    url.searchParams.set("day_range", String(dayRange));
     url.searchParams.set("num_per_page", String(pageSize));
     url.searchParams.set("cursor", cursor);
 

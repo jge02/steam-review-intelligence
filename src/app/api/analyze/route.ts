@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { fetchSteamReviews } from "@/lib/steam";
-import { analyzeReviewsWithOpenAI } from "@/lib/openai";
+import { runReviewAgent } from "@/lib/openai";
 import type { AnalysisResponse } from "@/types/analysis";
 import type { LlmProvider } from "@/lib/openai";
 
 export const runtime = "nodejs";
 
 type AnalyzeRequestBody = {
-  appId: string | number;
+  query?: string;
+  appId?: string | number;
   count?: number;
   language?: string;
   llmProvider?: LlmProvider;
@@ -30,7 +30,13 @@ export async function POST(req: Request) {
     );
   }
 
-  const appId = asInt(body.appId);
+  const appId = body.appId === undefined ? NaN : asInt(body.appId);
+  const query =
+    typeof body.query === "string" && body.query.trim().length
+      ? body.query.trim()
+      : Number.isInteger(appId) && appId > 0
+        ? `分析 Steam App ${appId} 的近期评论`
+        : "";
   const requestedCount = asInt(body.count ?? 100);
   const count = Number.isFinite(requestedCount)
     ? Math.max(1, Math.min(300, requestedCount))
@@ -42,72 +48,39 @@ export async function POST(req: Request) {
   const llmProvider: LlmProvider =
     body.llmProvider === "openai" || body.llmProvider === "openai_compatible"
       ? body.llmProvider
-      : "deepseek";
+      : "openai";
   const llmModel =
     typeof body.llmModel === "string" && body.llmModel.trim().length
       ? body.llmModel.trim()
       : undefined;
 
-  if (!Number.isInteger(appId) || appId <= 0) {
+  if (!query && (!Number.isInteger(appId) || appId <= 0)) {
     return NextResponse.json(
-      { error: "Invalid Steam App ID." },
+      { error: "Please provide a natural-language query or a valid Steam App ID." },
       { status: 400 },
     );
   }
 
   try {
-    const steam = await fetchSteamReviews({
-      appId,
+    const payload = await runReviewAgent({
+      query,
+      appId: Number.isInteger(appId) && appId > 0 ? appId : undefined,
+      language,
       count,
-      language,
-      filter: "recent",
-    });
-
-    if (steam.totalReviews === 0) {
-      return NextResponse.json(
-        { error: "No reviews found for that App ID (with the selected filters)." },
-        { status: 404 },
-      );
-    }
-
-    const total = steam.totalReviews;
-    const positive = steam.positive;
-    const negative = steam.negative;
-    const positivePct = total ? Math.round((positive / total) * 1000) / 10 : 0;
-    const negativePct = total ? Math.round((negative / total) * 1000) / 10 : 0;
-
-    const analysis = await analyzeReviewsWithOpenAI({
-      appId,
-      language,
-      stats: { total, positive, negative },
-      reviews: steam.reviews,
       llm: {
         provider: llmProvider,
         model: llmModel,
       },
     });
 
-    const payload: AnalysisResponse = {
-      appId,
-      requestedReviewCount: count,
-      language,
-      fetchedReviewCount: total,
-      steamSummary: {
-        totalReviews: total,
-        positive,
-        negative,
-        positivePct,
-        negativePct,
-      },
-      analysis,
-    };
-
-    return NextResponse.json(payload);
+    return NextResponse.json(payload satisfies AnalysisResponse);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error.";
     const status =
       message.includes("Steam API") || message.includes("reviews")
         ? 502
+        : message.includes("resolve any game")
+          ? 404
         : message.includes("API_KEY") ||
             message.includes("BASE_URL") ||
             message.includes("OpenAI") ||
